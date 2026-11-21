@@ -39,6 +39,16 @@ jobs:
           -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
           -Dorg.gradle.java.installations.auto-download=false
 
+      # Kept as an artifact too: if the upload below fails, the bundle can be uploaded by hand in the
+      # Central Portal (Publish > Publish Component).
+      - name: Keep the bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: central-bundle
+          path: build/central/*-bundle.zip
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload to the Central Portal
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
