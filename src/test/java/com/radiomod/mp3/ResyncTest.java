@@ -40,14 +40,20 @@ import org.junit.jupiter.params.provider.MethodSource;
 class ResyncTest {
     static final int POINTS = 100;
     static final int TARGET_FROM = 3;
-    /** How many frames after the first one found are compared. */
-    static final int COMPARED = 16;
+    /** How many frames are compared after the one from which the output must match. */
+    static final int COMPARED_AFTER = 8;
+    /**
+     * Start points leave at least this many frames before the end of the file. The bit reservoir can need
+     * many earlier frames before a frame can be decoded (up to 255 bytes of reservoir over MPEG-2 frames
+     * that carry 11 bytes of main data each, in VBR silence), so the window must be wide.
+     */
+    static final int TAIL = 40;
 
     record Frame(int offset, int samples, float[] pcm) {
     }
 
     record Result(String version, int points, int maxFirstMatching, int exactFrom, int fromTarget, int maxK0,
-            Map<Integer, Integer> histogram) {
+            int skipped, Map<Integer, Integer> histogram) {
     }
 
     private static final Map<String, Result> RESULTS = new ConcurrentHashMap<>();
@@ -60,17 +66,29 @@ class ResyncTest {
 
     /** Decodes from pos with the decoder as it is; returns the frames found, with their absolute offsets. */
     static List<Frame> decodeFrom(byte[] mp3, int pos, int maxFrames) {
+        return decodeFrom(mp3, pos, maxFrames, -1);
+    }
+
+    /**
+     * As above; with lag >= 0, stops COMPARED_AFTER frames after frame k0 + lag, where k0 is the first
+     * frame that returned samples.
+     */
+    static List<Frame> decodeFrom(byte[] mp3, int pos, int maxFrames, int lag) {
         Mp3Decoder dec = new Mp3Decoder();
         Mp3FrameInfo info = new Mp3FrameInfo();
         float[] pcm = new float[Mp3Decoder.MAX_SAMPLES_PER_FRAME];
         List<Frame> frames = new ArrayList<>();
-        while (frames.size() < maxFrames) {
+        int k0 = -1;
+        while (frames.size() < maxFrames && (k0 < 0 || lag < 0 || frames.size() < k0 + lag + COMPARED_AFTER)) {
             info.frameOffset = -1;
             int samples = dec.decodeFrame(mp3, pos, mp3.length - pos, pcm, info);
             if (info.frameBytes == 0) {
                 break;
             }
             if (info.frameOffset >= 0) { // a frame header was found
+                if (samples > 0 && k0 < 0) {
+                    k0 = frames.size();
+                }
                 frames.add(new Frame(pos + info.frameOffset, samples,
                         samples > 0 ? Arrays.copyOf(pcm, samples * info.channels) : new float[0]));
             }
@@ -114,8 +132,8 @@ class ResyncTest {
         for (Frame f : all) {
             full.put(f.offset, f);
         }
-        // start points before the last COMPARED + 2 frames, so that every start has frames to compare
-        int limit = all.get(Math.max(0, all.size() - COMPARED - 2)).offset;
+        // start points that leave TAIL frames before the end of the file (a quarter of it in short files)
+        int limit = all.get(all.size() > 2 * TAIL ? all.size() - TAIL : all.size() / 4).offset;
         SplittableRandom r = new SplittableRandom(0x5E5E ^ name.hashCode());
         String version = TestData.entry(name).attr("version");
         int lag = version.equals("MPEG-1") ? 1 : 2;
@@ -123,15 +141,19 @@ class ResyncTest {
         int worstExact = 0;
         int worstK0 = 0;
         int fromTarget = 0;
+        int skipped = 0;
         Map<Integer, Integer> histogram = new TreeMap<>();
         for (int p = 0; p < POINTS; p++) {
             int start = r.nextInt(limit);
-            List<Frame> after = decodeFrom(mp3, start, COMPARED);
+            List<Frame> after = decodeFrom(mp3, start, Integer.MAX_VALUE, lag);
             int k0 = 0;
             while (k0 < after.size() && after.get(k0).samples == 0) {
                 k0++;
             }
-            assertTrue(after.size() >= k0 + lag + 2, name + " from " + start + ": too few frames");
+            if (after.size() < k0 + lag + 2) {
+                skipped++; // the file ended before the reservoir filled: nothing to judge
+                continue;
+            }
             int first = firstMatching(after, full, false);
             int firstExact = firstMatching(after, full, true);
             histogram.merge(first, 1, Integer::sum);
@@ -144,7 +166,9 @@ class ResyncTest {
                     + ", but the output is bit-exact only from frame " + firstExact);
             assertTrue(first <= firstExact);
         }
-        RESULTS.put(name, new Result(version, POINTS, worst, worstExact, fromTarget, worstK0, histogram));
+        assertTrue(skipped <= POINTS / 2, name + ": " + skipped + " start points could not be judged");
+        RESULTS.put(name, new Result(version, POINTS - skipped, worst, worstExact, fromTarget, worstK0, skipped,
+                histogram));
     }
 
     @AfterAll
@@ -157,12 +181,13 @@ class ResyncTest {
         sb.append("# Restart in the middle of a file (section 7.5)").append(nl).append(nl);
         sb.append(POINTS).append(" random start points per file. Frame 0 is the first frame found after the start; ")
                 .append("k0 is the first frame the bit reservoir lets the decoder decode. 'Matches from' is the first ")
-                .append("frame from which all of the ").append(COMPARED)
-                .append(" frames compared match (16-bit samples within ±1) the decoding from the start of the file.").append(nl)
-                .append(nl);
+                .append("frame from which every frame compared (up to ").append(COMPARED_AFTER)
+                .append(" frames after k0 + 1 or k0 + 2) matches the decoding from the start of the file ")
+                .append("(16-bit samples within ±1). Start points after which the file ends before the reservoir ")
+                .append("fills are not judged.").append(nl).append(nl);
         sb.append("| file | version | worst k0 | worst: matches from frame | restarts matching from frame ")
-                .append(TARGET_FROM).append(" | distribution of 'matches from' |").append(nl);
-        sb.append("|---|---|---:|---:|---:|---|").append(nl);
+                .append(TARGET_FROM).append(" | not judged | distribution of 'matches from' |").append(nl);
+        sb.append("|---|---|---:|---:|---:|---:|---|").append(nl);
         int total = 0;
         int ok = 0;
         int worstAll = 0;
@@ -173,7 +198,8 @@ class ResyncTest {
             worstAll = Math.max(worstAll, v.maxFirstMatching);
             sb.append("| ").append(e.getKey()).append(" | ").append(v.version).append(" | ").append(v.maxK0)
                     .append(" | ").append(v.maxFirstMatching).append(" | ").append(v.fromTarget).append('/')
-                    .append(v.points).append(" | ").append(v.histogram).append(" |").append(nl);
+                    .append(v.points).append(" | ").append(v.skipped).append(" | ").append(v.histogram).append(" |")
+                    .append(nl);
         }
         sb.append(nl).append("All files: ").append(ok).append('/').append(total).append(" restarts match from frame ")
                 .append(TARGET_FROM).append("; the worst matches from frame ").append(worstAll).append('.').append(nl);

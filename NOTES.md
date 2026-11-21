@@ -32,7 +32,7 @@ to score the ISO vectors exactly as `minimp3_test.c` does.
 | 7.1 extra: corrupted and generated streams | 600 per test run, 6000 in a one-off run: **all bit-exact** with C |
 | 7.2 ISO vectors | 38 Layer III vectors: PSNR identical to `minimp3_test.c` with the same options, all > 96 dB (min 100.08). 45 Layer I/II vectors skipped. The README thresholds are not reached, by the C code either (see 7.2) |
 | 7.4 robustness | no exception, no read outside the range, termination: all cases pass; the robustness tests alone execute 98% of the lines, the whole suite 100% |
-| 7.5 restart | converges exactly as the bit reservoir allows; 751 of 1000 restarts match from frame 3, the worst from frame 8 (see 7.5) |
+| 7.5 restart | converges exactly as the bit reservoir allows; 730 of 1000 restarts match from frame 3, the worst from frame 8 (see 7.5) |
 | 7.6 speed | 1108× real time (128 kbps), 883× (320 kbps) on one P-core of an Intel Core i7-12700H, JDK 21; about 1/5 of that on an E-core |
 | 7.6 allocation | 0 bytes allocated by `decodeFrame` over 14 million samples, JDK 21 and 25 |
 | Java 21 / 25 | compiled with `--release 21` (class files version 65); all tests pass on JDK 21.0.7 and 25.0.5 |
@@ -236,28 +236,32 @@ about 0.2 s.
 `ResyncTest`: 100 random start points (fixed seed) in each of 10 files covering the three MPEG versions,
 CBR and VBR, mono and stereo, and a file with a large ID3v2 tag. A reset decoder starts at the point; the
 frames found are compared with the decoding from the start of the file. Frame 0 is the first frame found.
+Start points leave at least 40 frames before the end of the file (a quarter of the file for short files),
+and each restart is compared up to 8 frames past the frame from which it must match.
 
 | File | Version | Worst k0 | Worst "matches from" | Restarts matching from frame 3 | Distribution of "matches from" |
 |---|---|---:|---:|---:|---|
-| 44100_joint_cbr128 | MPEG-1 | 2 | 3 | 100/100 | {0=1, 1=1, 2=16, 3=82} |
-| tag_id3v2big_44100_joint_cbr128 | MPEG-1 | 2 | 3 | 100/100 | {0=68, 1=2, 2=7, 3=23} |
-| 48000_stereo_vbr0 | MPEG-1 | 8 | 8 | 96/100 | {1=1, 2=57, 3=38, 4=3, 8=1} |
-| 32000_mono_cbr32 | MPEG-1 | 5 | 6 | 7/100 | {0=2, 2=4, 3=1, 4=26, 5=55, 6=12} |
-| 22050_joint_cbr160 | MPEG-2 | 1 | 3 | 100/100 | {0=1, 1=2, 2=45, 3=52} |
-| 24000_mono_vbr0 | MPEG-2 | 5 | 7 | 44/100 | {0=1, 2=16, 3=27, 4=45, 5=4, 6=4, 7=3} |
-| 16000_stereo_vbr9 | MPEG-2 | 6 | 8 | 36/100 | {2=3, 3=33, 4=45, 5=10, 6=5, 7=2, 8=2} |
-| 12000_mono_cbr160 (64 kbps) | MPEG-2.5 | 1 | 3 | 100/100 | {0=7, 1=5, 2=24, 3=64} |
-| 11025_stereo_vbr0 | MPEG-2.5 | 2 | 4 | 81/100 | {0=1, 3=80, 4=19} |
-| 8000_joint_cbr8 | MPEG-2.5 | 2 | 4 | 87/100 | {0=11, 3=76, 4=13} |
+| 44100_joint_cbr128 | MPEG-1 | 2 | 3 | 100/100 | {0=1, 2=18, 3=81} |
+| tag_id3v2big_44100_joint_cbr128 | MPEG-1 | 2 | 3 | 100/100 | {0=77, 2=5, 3=18} |
+| 48000_stereo_vbr0 | MPEG-1 | 3 | 4 | 98/100 | {1=2, 2=58, 3=38, 4=2} |
+| 32000_mono_cbr32 | MPEG-1 | 5 | 6 | 9/100 | {0=1, 2=3, 3=5, 4=23, 5=59, 6=9} |
+| 22050_joint_cbr160 | MPEG-2 | 1 | 3 | 100/100 | {0=1, 2=39, 3=60} |
+| 24000_mono_vbr0 | MPEG-2 | 5 | 7 | 33/100 | {0=1, 2=10, 3=22, 4=49, 5=11, 6=6, 7=1} |
+| 16000_stereo_vbr9 | MPEG-2 | 6 | 8 | 12/100 | {0=2, 3=10, 4=54, 5=16, 6=6, 7=4, 8=8} |
+| 12000_mono_cbr160 (64 kbps) | MPEG-2.5 | 1 | 3 | 100/100 | {0=8, 2=61, 3=31} |
+| 11025_stereo_vbr0 | MPEG-2.5 | 2 | 4 | 78/100 | {0=1, 3=77, 4=22} |
+| 8000_joint_cbr8 | MPEG-2.5 | 1 | 3 | 100/100 | {0=21, 3=79} |
 
-**At most 8 frames**: in the worst case the output matches from the 8th frame after the first one found.
-751 of the 1000 restarts match from frame 3, as the specification asks; the others cannot, for the C code
-either, and the test checks the bound that the format allows instead:
+**At most 8 frames** here: in the worst case the output matches from the 8th frame after the first one
+found. 730 of the 1000 restarts match from frame 3, as the specification asks; the others cannot, for the
+C code either, and the test checks the bound that the format allows instead:
 
 - A frame can be decoded only when the bit reservoir holds the `main_data_begin` bytes it refers to, up
   to 511 bytes (MPEG-1) or 255 (MPEG-2/2.5) of earlier frames. After a restart the reservoir is empty, so
   frames 0, 1, ... return 0 samples until enough earlier frames have been read: call k0 the first one that
-  decodes. With small frames (32 kbps, VBR silence, low sample rates) k0 reaches 5-8.
+  decodes. With small frames (32 kbps, VBR silence, low sample rates) k0 reaches 5-8 in these files, and
+  more is possible: MPEG-2 frames of VBR silence at 24 kHz carry only 11 bytes of main data, so a full
+  reservoir of 255 bytes spans more than 20 of them.
 - Frame k0 is still wrong, because the MDCT overlap and the synthesis filter start from zero. With two
   granules per frame (MPEG-1), frame k0 + 1 is right; with one (MPEG-2 and 2.5) the synthesis filter keeps
   15 slots of the wrong granule, so only frame k0 + 2 is right.
@@ -265,6 +269,11 @@ either, and the test checks the bound that the format allows instead:
 `ResyncTest` requires every restart to be bit-exact from frame k0 + 1 (MPEG-1) or k0 + 2 (MPEG-2/2.5),
 and it is. "Matches from" in the table uses the tolerance of 7.1, so it can be one frame earlier than the
 bit-exact match when what is still wrong is too small to show. Results are identical on JDK 21 and 25.
+
+The corpus is generated on each machine, and the files depend slightly on the ffmpeg build that
+generates them: the numbers above come from ffmpeg 8.1 on Windows; the CI, with Ubuntu's ffmpeg 6.1,
+decodes different files and gets different numbers (on its first run one restart needed more than 13
+frames to fill the reservoir). The bound that the test checks holds for any file.
 
 ### 7.6: speed and allocation
 
@@ -367,7 +376,7 @@ The specification says that the C code wins; these are the points where that dec
 | Specification | Decision |
 |---|---|
 | 7.2: every vector at least as good as the README table | impossible with `MINIMP3_NO_SIMD`, for the C code too (3, 7.2). The test requires the PSNR of the C program and > 96 dB |
-| 7.5: output equal from the third frame after the first one found | not always possible, for the C code too, when the bit reservoir spans many small frames (3, 7.5). The test requires the bound the format allows; 75% of the restarts meet frame 3, all meet frame 8 |
+| 7.5: output equal from the third frame after the first one found | not always possible, for the C code too, when the bit reservoir spans many small frames (3, 7.5). The test requires the bound the format allows; 73% of the restarts meet frame 3, all meet frame 8 (in the corpus of 7.5) |
 | 4: `info` "filled on every call" | as in C, only `frameBytes` is written when no frame is found; the other fields keep their values. Documented in the Javadoc of `Mp3FrameInfo` and `decodeFrame` |
 | 4: result 0, 576 or 1152 | with `pcm == null`, 384 is also possible (Layer I), as in C (4.7) |
 | 7.3: CBR maximum per version, 128 kbps | LAME writes at most 64 kbps for MPEG-2.5: those files are at 64 kbps (3, 7.1) |
