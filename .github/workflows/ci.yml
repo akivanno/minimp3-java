@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 25 for the second test run; JDK 21, listed last, becomes JAVA_HOME and runs Gradle.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            25
+            21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The test data needs a C compiler and ffmpeg with libmp3lame (Ubuntu's ffmpeg has it).
+      - name: Install gcc and ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc ffmpeg
+
+      - name: Build, test on JDK 21 and 25
+        run: >
+          ./gradlew check javadoc
+          -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
+          -Porg.gradle.java.installations.auto-download=false
+
+      - name: Benchmark (informative)
+        run: ./gradlew benchmark
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: |
+            build/reports/
+            build/test-results/
+          retention-days: 14
