@@ -78,7 +78,7 @@ val testDataDir = layout.buildDirectory.dir("testdata")
 val reportsDir = layout.buildDirectory.dir("reports/minimp3")
 val skipTestData = providers.gradleProperty("skipTestData").isPresent
 
-val prepareTestData by tasks.registering(Exec::class) {
+val prepareTestData = tasks.register<Exec>("prepareTestData") {
     group = "verification"
     description = "Builds the C reference decoder, generates the corpus and the reference outputs."
     val windows = System.getProperty("os.name").lowercase().contains("windows")
@@ -125,7 +125,7 @@ tasks.jacocoTestReport {
     }
 }
 
-val testJdk25 by tasks.registering(Test::class) {
+val testJdk25 = tasks.register<Test>("testJdk25") {
     group = "verification"
     description = "Runs the tests on JDK 25."
     testClassesDirs = sourceSets.test.get().output.classesDirs
@@ -141,7 +141,7 @@ tasks.check {
     dependsOn(testJdk25)
 }
 
-val benchmark by tasks.registering(JavaExec::class) {
+tasks.register<JavaExec>("benchmark") {
     group = "verification"
     description = "Measures the decoding speed on the 4-minute benchmark files (not part of check)."
     if (!skipTestData) {
@@ -218,7 +218,7 @@ tasks.named("publishMavenPublicationToStagingRepository") {
     }
 }
 
-val centralBundle by tasks.registering(Zip::class) {
+tasks.register<Zip>("centralBundle") {
     group = "publishing"
     description = "Zips the signed staging repository into a bundle for the Maven Central Portal."
     dependsOn("publishMavenPublicationToStagingRepository")
