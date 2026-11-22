@@ -94,9 +94,31 @@ jobs:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
         run: |
+          set -euo pipefail
           bundle=$(ls build/central/*-bundle.zip)
           token=$(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)
-          curl --fail-with-body -sS -X POST \
+          echo "::add-mask::$token"
+          id=$(curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer $token" \
             -F "bundle=@$bundle" \
-            "https://central.sonatype.com/api/v1/publisher/upload?publishingType=USER_MANAGED"
+            "https://central.sonatype.com/api/v1/publisher/upload?publishingType=USER_MANAGED")
+          echo "Deployment: $id"
+          # Waits for the validation, so that its result (and any error) is in this log.
+          state=UNKNOWN
+          for _ in $(seq 1 60); do
+            status=$(curl --fail-with-body -sS -X POST -H "Authorization: Bearer $token" \
+              "https://central.sonatype.com/api/v1/publisher/status?id=$id")
+            state=$(jq -r .deploymentState <<<"$status")
+            case "$state" in
+              VALIDATED)
+                jq . <<<"$status"
+                echo "::notice::Deployment $id validated. Publish it at https://central.sonatype.com/publishing/deployments"
+                exit 0 ;;
+              FAILED)
+                jq . <<<"$status"
+                echo "::error::Deployment $id failed the Central Portal validation (errors above)"
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::warning::Deployment $id is still $state after 10 minutes: see https://central.sonatype.com/publishing/deployments"
