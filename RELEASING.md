@@ -31,8 +31,10 @@ repository.
    ```
 
    and upload `build/central/minimp3-java-<version>-bundle.zip` in the Central Portal
-   (Publish > Publish Component). The workflow also keeps the bundle as the `central-bundle`
-   artifact of the run, for a manual upload if its own upload step fails.
+   (Publish > Publish Component). The workflow first checks that `SIGNING_KEY` is a whole private
+   key that `SIGNING_PASSWORD` unlocks, and warns if its public part is not on keyserver.ubuntu.com.
+   It also keeps the bundle as the `central-bundle` artifact of the run, for a manual upload if its
+   own upload step fails.
 3. In the Central Portal, check the validated deployment and press **Publish**.
 4. Set `version` to the next `-SNAPSHOT`.
 
