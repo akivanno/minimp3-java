@@ -63,14 +63,18 @@ The only exceptions are `NullPointerException` and `IllegalArgumentException` fo
 
 ## Maven
 
-The library is not published yet. The coordinates will be:
-
 ```xml
 <dependency>
   <groupId>io.github.akivanno</groupId>
   <artifactId>minimp3-java</artifactId>
-  <version>…</version>
+  <version>0.1.0</version>
 </dependency>
+```
+
+or with Gradle:
+
+```kotlin
+implementation("io.github.akivanno:minimp3-java:0.1.0")
 ```
 
 The jar has the automatic module name `com.radiomod.mp3`.
