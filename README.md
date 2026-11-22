@@ -1,5 +1,7 @@
 # minimp3-java
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.akivanno/minimp3-java)](https://central.sonatype.com/artifact/io.github.akivanno/minimp3-java)
+
 A pure-Java MP3 decoder: a faithful port of [minimp3](https://github.com/lieff/minimp3) by lieff
 (commit [`1428237`](https://github.com/lieff/minimp3/tree/142823796ab8efa55e1bf11406028f3be77ecceb)).
 
