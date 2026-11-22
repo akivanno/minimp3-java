@@ -45,7 +45,12 @@ jobs:
               exit 1 ;;
           esac
           export GNUPGHOME="$(mktemp -d)"
-          printf '%s\n' "$SIGNING_KEY" | gpg --batch --quiet --import
+          if ! printf '%s\n' "$SIGNING_KEY" | gpg --batch --quiet --import; then
+            lines=$(printf '%s\n' "$SIGNING_KEY" | wc -l)
+            longest=$(printf '%s\n' "$SIGNING_KEY" | awk '{ if (length > m) m = length } END { print m + 0 }')
+            echo "::error::gpg cannot read SIGNING_KEY (${lines} lines, the longest of ${longest} characters; an exported key has dozens of lines of at most 64 characters). The text was changed or cut while copying it: export it again and paste it unchanged."
+            exit 1
+          fi
           fpr=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')
           echo "Signing key: $fpr"
           if ! echo check | gpg --batch --quiet --pinentry-mode loopback --passphrase-fd 3 --sign 3<<<"$SIGNING_PASSWORD" > /dev/null; then
