@@ -44,10 +44,16 @@ jobs:
               echo "::error::SIGNING_KEY is not a whole private key: paste everything from -----BEGIN PGP PRIVATE KEY BLOCK----- to -----END PGP PRIVATE KEY BLOCK-----"
               exit 1 ;;
           esac
+          # The build drops whatever precedes the armor too, such as the byte order mark that
+          # PowerShell adds when the key is piped into a secret.
+          key="-----BEGIN${SIGNING_KEY#*-----BEGIN}"
+          if [ "$key" != "$SIGNING_KEY" ]; then
+            echo "::notice::Ignoring $(( ${#SIGNING_KEY} - ${#key} )) characters before -----BEGIN in SIGNING_KEY"
+          fi
           export GNUPGHOME="$(mktemp -d)"
-          if ! printf '%s\n' "$SIGNING_KEY" | gpg --batch --quiet --import; then
-            lines=$(printf '%s\n' "$SIGNING_KEY" | wc -l)
-            longest=$(printf '%s\n' "$SIGNING_KEY" | awk '{ if (length > m) m = length } END { print m + 0 }')
+          if ! printf '%s\n' "$key" | gpg --batch --quiet --import; then
+            lines=$(printf '%s\n' "$key" | wc -l)
+            longest=$(printf '%s\n' "$key" | awk '{ if (length > m) m = length } END { print m + 0 }')
             echo "::error::gpg cannot read SIGNING_KEY (${lines} lines, the longest of ${longest} characters; an exported key has dozens of lines of at most 64 characters). The text was changed or cut while copying it: export it again and paste it unchanged."
             exit 1
           fi

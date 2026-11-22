@@ -199,15 +199,19 @@ publishing {
     }
 }
 
+// An ASCII-armored private key and its passphrase, from the environment or from
+// ~/.gradle/gradle.properties: never from a file in the repository. Whatever precedes the armor is
+// dropped: a byte order mark that PowerShell adds when the key is piped into a secret makes it
+// unreadable otherwise.
+val signingKey: Provider<String> = providers.environmentVariable("SIGNING_KEY").filter { it.isNotBlank() }
+    .orElse(providers.gradleProperty("signingKey"))
+    .map { key -> key.indexOf("-----BEGIN").let { if (it > 0) key.substring(it) else key } }
+
 signing {
-    // An ASCII-armored private key and its passphrase, from the environment or from
-    // ~/.gradle/gradle.properties: never from a file in the repository.
-    val key = providers.environmentVariable("SIGNING_KEY").filter { it.isNotBlank() }
-        .orElse(providers.gradleProperty("signingKey"))
     val password = providers.environmentVariable("SIGNING_PASSWORD").filter { it.isNotBlank() }
         .orElse(providers.gradleProperty("signingPassword"))
-    if (key.isPresent) {
-        useInMemoryPgpKeys(key.get(), password.orNull)
+    if (signingKey.isPresent) {
+        useInMemoryPgpKeys(signingKey.get(), password.orNull)
         sign(publishing.publications["maven"])
     }
 }
@@ -227,8 +231,7 @@ tasks.register<Zip>("centralBundle") {
     archiveFileName = "minimp3-java-${project.version}-bundle.zip"
     destinationDirectory = layout.buildDirectory.dir("central")
     val version = project.version.toString()
-    val signed = providers.environmentVariable("SIGNING_KEY").filter { it.isNotBlank() }
-        .orElse(providers.gradleProperty("signingKey")).isPresent
+    val signed = signingKey.isPresent
     doFirst {
         check(!version.endsWith("-SNAPSHOT")) { "Maven Central does not accept SNAPSHOT versions: set version in gradle.properties" }
         check(signed) { "Maven Central requires signed artifacts: set SIGNING_KEY and SIGNING_PASSWORD" }
